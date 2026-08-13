@@ -58,7 +58,6 @@ import com.example.data.Ayah
 import com.example.data.ErrorLogEntity
 import com.example.data.QuranData
 import com.example.ui.MainViewModel
-import com.example.ui.swipeWatcher
 import com.example.ui.theme.MyApplicationTheme
 import kotlinx.coroutines.launch
 import kotlin.math.max
@@ -193,7 +192,9 @@ fun ReadingScreen(viewModel: MainViewModel) {
     val pagerState = rememberPagerState(pageCount = { currentAyahs.size })
     val coroutineScope = rememberCoroutineScope()
     
-    var isRevisionMode by remember { mutableStateOf(false) }
+    // true = Active Reading Mode (words hidden, quick actions)
+    // false = Analysis Mode (words shown, bottom sheet on long press)
+    var isRevisionMode by remember { mutableStateOf(true) }
     var revealedWordsCount by remember { mutableIntStateOf(0) }
     
     // New states for Next Ayah
@@ -230,35 +231,33 @@ fun ReadingScreen(viewModel: MainViewModel) {
 
     Scaffold(
         floatingActionButton = {
-            if (nextAyah != null) {
+            if (isRevisionMode && nextAyah != null) {
                 ExtendedFloatingActionButton(
-                    onClick = {
-                        if (!isNextAyahVisible) {
-                            isNextAyahVisible = true
-                            revealedNextWordCount = 0
-                        } else {
-                            val nextAyahWords = nextAyah.text.split("\\s+".toRegex()).filter { it.isNotBlank() }
-                            if (revealedNextWordCount < nextAyahWords.size) {
-                                revealedNextWordCount++
-                            } else {
-                                coroutineScope.launch {
-                                    pagerState.animateScrollToPage(pagerState.currentPage + 1)
-                                }
-                            }
-                        }
-                    },
+                    onClick = { /* Handled by combinedClickable below */ },
                     icon = { Icon(Icons.Default.Visibility, contentDescription = null) },
                     text = { Text("الآية الموالية") },
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.swipeWatcher(
-                        onSwipeUp = {
-                            val nextAyahWords = nextAyah.text.split("\\s+".toRegex()).filter { it.isNotBlank() }
-                            revealedNextWordCount = nextAyahWords.size
+                    modifier = Modifier.combinedClickable(
+                        onClick = {
+                            if (!isNextAyahVisible) {
+                                isNextAyahVisible = true
+                                revealedNextWordCount = 0
+                            } else {
+                                val nextAyahWords = nextAyah.text.split("\\s+".toRegex()).filter { it.isNotBlank() }
+                                if (revealedNextWordCount < nextAyahWords.size) {
+                                    revealedNextWordCount++
+                                } else {
+                                    coroutineScope.launch {
+                                        pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                                    }
+                                }
+                            }
                         },
-                        onSwipeDown = {
-                            val nextAyahWords = nextAyah.text.split("\\s+".toRegex()).filter { it.isNotBlank() }
-                            revealedNextWordCount = nextAyahWords.size
+                        onLongClick = {
+                            // Long press to reveal entire next ayah
+                            isNextAyahVisible = true
+                            revealedNextWordCount = nextAyah.text.split("\\s+".toRegex()).filter { it.isNotBlank() }.size
                         }
                     )
                 )
@@ -297,7 +296,7 @@ fun ReadingScreen(viewModel: MainViewModel) {
                 },
                 actions = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("مراجعة", modifier = Modifier.padding(end = 8.dp))
+                        Text(if (isRevisionMode) "تلاوة" else "تحليل", modifier = Modifier.padding(end = 8.dp))
                         Switch(
                             checked = isRevisionMode,
                             onCheckedChange = { isRevisionMode = it }
@@ -346,11 +345,11 @@ fun ReadingScreen(viewModel: MainViewModel) {
                             ayah = ayah,
                             isRevisionMode = isRevisionMode,
                             revealedWordsCount = revealedWordsCount,
+                            onRevealWord = { newCount -> revealedWordsCount = newCount },
                             errorLogs = errorLogs,
                             quranFont = quranFont,
                             viewModel = viewModel,
-                            onWordLongClick = { w -> selectedWordForAnalysis = Pair(ayah, w) },
-                            onAyahLongClick = { /* Mutashabihat for Ayah */ }
+                            onWordLongClick = { w -> selectedWordForAnalysis = Pair(ayah, w) }
                         )
                         
                         if (page == pagerState.currentPage && isNextAyahVisible && nextAyah != null) {
@@ -359,13 +358,13 @@ fun ReadingScreen(viewModel: MainViewModel) {
                             Spacer(modifier = Modifier.height(32.dp))
                             AyahDisplayView(
                                 ayah = nextAyah,
-                                isRevisionMode = true,
+                                isRevisionMode = isRevisionMode,
                                 revealedWordsCount = revealedNextWordCount,
+                                onRevealWord = { newCount -> revealedNextWordCount = newCount },
                                 errorLogs = errorLogs,
                                 quranFont = quranFont,
                                 viewModel = viewModel,
-                                onWordLongClick = { w -> selectedWordForAnalysis = Pair(nextAyah, w) },
-                                onAyahLongClick = { /* Mutashabihat for Ayah */ }
+                                onWordLongClick = { w -> selectedWordForAnalysis = Pair(nextAyah, w) }
                             )
                         }
                     }
@@ -381,13 +380,17 @@ fun AyahDisplayView(
     ayah: Ayah,
     isRevisionMode: Boolean,
     revealedWordsCount: Int,
+    onRevealWord: (Int) -> Unit,
     errorLogs: List<ErrorLogEntity>,
     quranFont: androidx.compose.ui.text.font.FontFamily,
     viewModel: MainViewModel,
-    onWordLongClick: (String) -> Unit,
-    onAyahLongClick: () -> Unit
+    onWordLongClick: (String) -> Unit
 ) {
     val words = ayah.text.split("\\s+".toRegex()).filter { it.isNotBlank() }
+    
+    // Track which word has the popup open
+    var activePopupWordIndex by remember { mutableStateOf<Int?>(null) }
+    
     FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
@@ -424,47 +427,70 @@ fun AyahDisplayView(
                 }
             }
 
-            Text(
-                text = annotatedWord,
-                fontSize = 32.sp,
-                lineHeight = 62.sp,
-                fontFamily = quranFont,
-                fontWeight = FontWeight.Normal,
-                textAlign = TextAlign.Center,
-                color = textColor,
-                textDecoration = textDecoration,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(bgColor)
-                    .combinedClickable(
-                        enabled = true,
-                        onClick = {
-                            if (!isRevealed) {
-                                // Handled externally via count, but if we want individual reveal:
-                            } else {
-                                // Default tap
+            Box {
+                Text(
+                    text = annotatedWord,
+                    fontSize = 32.sp,
+                    lineHeight = 62.sp,
+                    fontFamily = quranFont,
+                    fontWeight = FontWeight.Normal,
+                    textAlign = TextAlign.Center,
+                    color = textColor,
+                    textDecoration = textDecoration,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(bgColor)
+                        .combinedClickable(
+                            enabled = true,
+                            onClick = {
+                                if (isRevisionMode) {
+                                    if (!isRevealed) {
+                                        // Reveal word and log hesitate
+                                        onRevealWord(index + 1)
+                                        viewModel.logError(ayah, word, "تردد / تعثر")
+                                    } else {
+                                        // Word is already revealed in reading mode -> show quick actions popup
+                                        activePopupWordIndex = if (activePopupWordIndex == index) null else index
+                                    }
+                                } else {
+                                    // In analysis mode, tapping does nothing specific unless we want
+                                    activePopupWordIndex = null
+                                }
+                            },
+                            onLongClick = {
+                                if (!isRevisionMode && isRevealed) {
+                                    // Analysis Mode -> Long press shows Bottom Sheet
+                                    onWordLongClick(word)
+                                }
                             }
-                        },
-                        onLongClick = {
-                            if (isRevealed) {
-                                onWordLongClick(word)
-                            }
-                        }
-                    )
-                    .swipeWatcher(
-                        onSwipeDown = {
-                            if (isRevealed) {
+                        )
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                )
+                
+                // Quick Action Popup (only in Revision Mode for revealed words)
+                if (isRevisionMode && activePopupWordIndex == index) {
+                    DropdownMenu(
+                        expanded = true,
+                        onDismissRequest = { activePopupWordIndex = null },
+                        modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("🔴 خطأ", fontWeight = FontWeight.Bold) },
+                            onClick = {
                                 viewModel.logError(ayah, word, "توقف تام ونسيان الكلمة")
+                                activePopupWordIndex = null
                             }
-                        },
-                        onSwipeUp = {
-                            if (isRevealed) {
+                        )
+                        DropdownMenuItem(
+                            text = { Text("🟡 تردد", fontWeight = FontWeight.Bold) },
+                            onClick = {
                                 viewModel.logError(ayah, word, "تردد / شك")
+                                activePopupWordIndex = null
                             }
-                        }
-                    )
-                    .padding(horizontal = 4.dp, vertical = 2.dp)
-            )
+                        )
+                    }
+                }
+            }
         }
         
         val ayahErrors = errorLogs.filter { it.surahId == ayah.surahId && it.ayahNumber == ayah.numberInSurah && it.wordText == "[الآية]" }
@@ -478,17 +504,12 @@ fun AyahDisplayView(
             fontFamily = quranFont,
             color = badgeColor.copy(alpha = 0.8f),
             modifier = Modifier
-                .combinedClickable(
-                    onClick = {},
-                    onLongClick = { onAyahLongClick() }
-                )
                 .padding(horizontal = 8.dp, vertical = 4.dp)
                 .align(Alignment.CenterVertically)
         )
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 
 @Composable
 fun SurahDropdown(selectedSurahId: Int, onSurahSelected: (Int) -> Unit) {
