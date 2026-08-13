@@ -1,6 +1,11 @@
-package com.example.ui
+import re
 
-import androidx.compose.animation.core.animateFloatAsState
+with open('/app/applet/app/src/main/java/com/example/ui/WordAnalysisBottomSheet.kt', 'r') as f:
+    code = f.read()
+
+new_content = """package com.example.ui
+
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -31,7 +36,7 @@ import kotlin.math.roundToInt
 
 fun splitArabicLettersWithDiacritics(word: String): List<String> {
     val result = mutableListOf<String>()
-    val diacriticsRegex = "[\\u064B-\\u065F\\u0670]".toRegex()
+    val diacriticsRegex = "[\\\\u064B-\\\\u065F\\\\u0670]".toRegex()
     var currentChunk = ""
     for (char in word) {
         if (char.toString().matches(diacriticsRegex)) {
@@ -67,7 +72,7 @@ fun WordAnalysisBottomSheet(
             viewModel.clearSearch()
             onDismissRequest() 
         },
-        
+        windowInsets = WindowInsets(0, 0, 0, 0)
     ) {
         Column(
             modifier = Modifier
@@ -150,7 +155,6 @@ fun WordAnalysisBottomSheet(
                 
                 val letters = remember { splitArabicLettersWithDiacritics(word) }
                 
-                var showAddMenuForIndex by remember { mutableStateOf<Int?>(null) }
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Center,
@@ -164,67 +168,23 @@ fun WordAnalysisBottomSheet(
                                 onDismissRequest()
                             },
                             onDelete = {
-                                viewModel.logError(ayah, word, "حذف الحرف / المد", charIndex = index)
-                                onDismissRequest()
-                            },
-                            onReplaceLetter = {
-                                viewModel.logError(ayah, word, "تغيير الحرف / المد", charIndex = index)
+                                viewModel.logError(ayah, word, "زيادة حرف", charIndex = index)
                                 onDismissRequest()
                             }
                         )
                         
-                        Box(
-                            modifier = Modifier
-                                .width(20.dp)
-                                .height(60.dp)
-                                .clickable {
-                                    showAddMenuForIndex = index
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = "Add", tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
-                            
-                            if (showAddMenuForIndex == index) {
-                                var step by remember { mutableIntStateOf(1) } // 1: Choose type, 2: Choose letter
-                                var isMadd by remember { mutableStateOf(true) }
-                                
-                                AlertDialog(
-                                    onDismissRequest = { showAddMenuForIndex = null },
-                                    title = { Text(if (step == 1) "ماذا أضفت بالخطأ؟" else if (isMadd) "اختر حرف المد" else "اختر الحرف") },
-                                    text = {
-                                        if (step == 1) {
-                                            Column {
-                                                TextButton(onClick = { isMadd = true; step = 2 }, modifier = Modifier.fillMaxWidth()) { Text("أضفنا مد") }
-                                                TextButton(onClick = { isMadd = false; step = 2 }, modifier = Modifier.fillMaxWidth()) { Text("أضفنا حرف") }
-                                            }
-                                        } else {
-                                            val options = if (isMadd) listOf("ا", "و", "ي", "ى") else listOf("س", "ص", "ض", "ظ", "ذ", "ز", "ت", "ط", "ق", "ك", "ح", "خ", "ه", "ء")
-                                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                options.forEach { opt ->
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(40.dp)
-                                                            .clip(CircleShape)
-                                                            .background(MaterialTheme.colorScheme.primaryContainer)
-                                                            .clickable {
-                                                                viewModel.logError(ayah, word, "زيادة ${if (isMadd) "مد" else "حرف"} ($opt)", charIndex = index)
-                                                                showAddMenuForIndex = null
-                                                                onDismissRequest()
-                                                            },
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Text(text = opt, fontSize = 24.sp)
-                                                    }
-                                                }
-                                            }
-                                        }
+                        if (index < letters.size - 1) {
+                            Box(
+                                modifier = Modifier
+                                    .width(20.dp)
+                                    .height(60.dp)
+                                    .clickable {
+                                        viewModel.logError(ayah, word, "نقصان حرف", charIndex = index)
+                                        onDismissRequest()
                                     },
-                                    confirmButton = {
-                                        TextButton(onClick = { showAddMenuForIndex = null }) {
-                                            Text("إلغاء")
-                                        }
-                                    }
-                                )
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = "Add", tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
                             }
                         }
                     }
@@ -235,58 +195,42 @@ fun WordAnalysisBottomSheet(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun InteractiveLetterBox(
     charChunk: String,
     onDiacriticChange: (String) -> Unit,
-    onDelete: () -> Unit,
-    onReplaceLetter: (String) -> Unit
+    onDelete: () -> Unit
 ) {
     var offsetX by remember { mutableFloatStateOf(0f) }
     var offsetY by remember { mutableFloatStateOf(0f) }
-    var showDialType by remember { mutableStateOf<String?>(null) } // "madd", "haraka", "letter"
+    var showDial by remember { mutableStateOf(false) }
     var isDeleted by remember { mutableStateOf(false) }
 
     val alpha by animateFloatAsState(targetValue = if (isDeleted) 0.3f else 1f, label = "alpha")
 
-    val isMadd = charChunk.length == 1 && charChunk in listOf("ا", "و", "ي", "ى")
-    val maddLetters = listOf("ا", "و", "ي", "ى")
-    val harakat = listOf("َ", "ُ", "ِ", "ْ", "ّ", "ً", "ٌ", "ٍ", "َّ", "ُّ", "ِّ")
-    // Note: To keep the letter dial simple, just some common similar letters, or a generic placeholder for "replaced letter"
-    val similarLetters = listOf("س", "ص", "ض", "ظ", "ذ", "ز", "ت", "ط", "ق", "ك", "ح", "خ", "ه", "ء") 
-
     Box(contentAlignment = Alignment.Center) {
-        if (showDialType != null) {
+        if (showDial) {
             Box(
                 modifier = Modifier
-                    .offset(y = if (showDialType == "letter") 60.dp else (-60).dp)
+                    .offset(y = (-60).dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(MaterialTheme.colorScheme.primaryContainer)
                     .padding(8.dp)
-                    .widthIn(max = 200.dp)
             ) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val options = when (showDialType) {
-                        "madd" -> maddLetters.filter { it != charChunk }
-                        "haraka" -> harakat.filter { !charChunk.contains(it) }
-                        "letter" -> similarLetters
-                        else -> emptyList()
-                    }
-                    options.forEach { opt ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf("َ", "ُ", "ِ", "ْ").forEach { haraka ->
                         Box(
                             modifier = Modifier
                                 .size(32.dp)
                                 .clip(CircleShape)
                                 .background(MaterialTheme.colorScheme.surface)
                                 .clickable {
-                                    showDialType = null
-                                    if (options == harakat) onDiacriticChange(opt)
-                                    else onReplaceLetter(opt)
+                                    showDial = false
+                                    onDiacriticChange(haraka)
                                 },
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(text = if (showDialType == "haraka") "ـ$opt" else opt, fontSize = 20.sp, color = MaterialTheme.colorScheme.onSurface)
+                            Text(text = "ـ$haraka", fontSize = 20.sp, color = MaterialTheme.colorScheme.onSurface)
                         }
                     }
                 }
@@ -302,21 +246,17 @@ fun InteractiveLetterBox(
                 .pointerInput(Unit) {
                     detectDragGestures(
                         onDragEnd = {
-                            if (offsetX > 100f || offsetX < -100f) {
+                            if (offsetX > 100f || offsetX < -100f || offsetY > 100f) {
                                 isDeleted = true
                                 onDelete()
-                            } else if (offsetY < -50f) { // Swipe Up
-                                if (isMadd) showDialType = "madd" else showDialType = "haraka"
-                                offsetY = 0f
-                                offsetX = 0f
-                            } else if (offsetY > 50f && !isMadd) { // Swipe Down
-                                showDialType = "letter"
+                            } else if (offsetY < -50f) {
+                                showDial = true
                                 offsetY = 0f
                                 offsetX = 0f
                             } else {
                                 offsetX = 0f
                                 offsetY = 0f
-                                showDialType = null
+                                showDial = false
                             }
                         }
                     ) { change, dragAmount ->
@@ -337,3 +277,7 @@ fun InteractiveLetterBox(
         }
     }
 }
+"""
+
+with open('/app/applet/app/src/main/java/com/example/ui/WordAnalysisBottomSheet.kt', 'w') as f:
+    f.write(new_content)

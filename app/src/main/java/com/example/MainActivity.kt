@@ -43,6 +43,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material3.minimumInteractiveComponentSize
 
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.SpanStyle
@@ -357,21 +359,6 @@ fun ReadingScreen(viewModel: MainViewModel) {
                             onWordLongClick = { w -> selectedWordForAnalysis = Pair(ayah, w) }
                         )
                         
-                        if (page == pagerState.currentPage && isNextAyahVisible && nextAyah != null) {
-                            Spacer(modifier = Modifier.height(32.dp))
-                            Divider(modifier = Modifier.padding(horizontal = 32.dp))
-                            Spacer(modifier = Modifier.height(32.dp))
-                            AyahDisplayView(
-                                ayah = nextAyah,
-                                isRevisionMode = isRevisionMode,
-                                revealedWordsCount = revealedNextWordCount,
-                                onRevealWord = { newCount -> revealedNextWordCount = newCount },
-                                errorLogs = errorLogs,
-                                quranFont = quranFont,
-                                viewModel = viewModel,
-                                onWordLongClick = { w -> selectedWordForAnalysis = Pair(nextAyah, w) }
-                            )
-                        }
                     }
                 }
             }
@@ -414,20 +401,18 @@ fun AyahDisplayView(
                           else if (primaryError != null) getErrorColor(primaryError.errorType, Color.Transparent).copy(alpha = 0.15f)
                           else Color.Transparent
 
-            val annotatedWord = if (!isRevealed) {
-                buildAnnotatedString { append("••••") }
-            } else {
-                buildAnnotatedString {
-                    val errorChars = wordErrors.mapNotNull { it.charIndex }
-                    word.forEachIndexed { i, c ->
-                        if (i in errorChars) {
-                            withStyle(SpanStyle(color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Black, textDecoration = TextDecoration.Underline)) { append(c.toString()) }
-                        } else {
-                            append(c.toString())
-                        }
+            val annotatedWord = buildAnnotatedString {
+                val errorChars = wordErrors.mapNotNull { it.charIndex }
+                word.forEachIndexed { i, c ->
+                    if (i in errorChars) {
+                        withStyle(SpanStyle(color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Black, textDecoration = TextDecoration.Underline)) { append(c.toString()) }
+                    } else {
+                        append(c.toString())
                     }
                 }
             }
+            
+            val blurRadius = if (!isRevealed) 12.dp else 0.dp
 
             Box {
                 Text(
@@ -442,26 +427,59 @@ fun AyahDisplayView(
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
                         .background(bgColor)
+                        .blur(blurRadius)
+                        .pointerInput(isRevealed, isRevisionMode) {
+                            awaitPointerEventScope {
+                                while (true) {
+                                    val downEvent = awaitPointerEvent(PointerEventPass.Initial)
+                                    if (!downEvent.changes.first().pressed) continue
+                                    val startY = downEvent.changes.first().position.y
+                                    var isConsumed = false
+                                    
+                                    while (true) {
+                                        val moveEvent = awaitPointerEvent(PointerEventPass.Initial)
+                                        val change = moveEvent.changes.firstOrNull() ?: break
+                                        if (!change.pressed) {
+                                            // on tap detection
+                                            if (!isConsumed) {
+                                                // We can rely on a separate tap detector, but since we use PointerEventPass.Initial
+                                                // it might interfere. Actually, let's keep detectTapGestures in a separate block
+                                                // and only consume here IF it's a swipe.
+                                            }
+                                            break
+                                        }
+                                        
+                                        if (!isConsumed) {
+                                            val deltaY = change.position.y - startY
+                                            if (deltaY < -40f) { // Swipe Up
+                                                if (isRevealed) {
+                                                    viewModel.logError(ayah, word, "تردد / توقف سريع")
+                                                }
+                                                isConsumed = true
+                                                change.consume()
+                                            } else if (deltaY > 40f) { // Swipe Down
+                                                if (isRevealed) {
+                                                    viewModel.logError(ayah, word, "توقف تام ونسيان الكلمة")
+                                                }
+                                                isConsumed = true
+                                                change.consume()
+                                            }
+                                        } else {
+                                            change.consume()
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         .pointerInput(isRevealed, isRevisionMode) {
                             detectTapGestures(
                                 onTap = {
-                                    if (isRevisionMode) {
-                                        if (!isRevealed) {
-                                            onRevealWord(index + 1)
-                                        } else {
-                                            // Single tap on revealed word logs hesitation (Yellow)
-                                            viewModel.logError(ayah, word, "تردد / توقف سريع")
-                                        }
-                                    }
-                                },
-                                onDoubleTap = {
-                                    if (isRevisionMode && isRevealed) {
-                                        // Double tap logs forgotten word (Red)
-                                        viewModel.logError(ayah, word, "توقف تام ونسيان الكلمة")
+                                    if (!isRevealed) {
+                                        onRevealWord(index + 1)
                                     }
                                 },
                                 onLongPress = {
-                                    if (!isRevisionMode && isRevealed) {
+                                    if (isRevealed) {
                                         onWordLongClick(word)
                                     }
                                 }
@@ -482,9 +500,7 @@ fun AyahDisplayView(
                 .minimumInteractiveComponentSize()
                 .clip(RoundedCornerShape(16.dp))
                 .clickable {
-                    if (!isRevisionMode) {
-                        onWordLongClick("[الآية]")
-                    }
+                    onWordLongClick("[الآية]")
                 }
                 .padding(horizontal = 8.dp, vertical = 4.dp)
                 .align(Alignment.CenterVertically),

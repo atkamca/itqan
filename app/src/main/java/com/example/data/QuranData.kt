@@ -54,15 +54,31 @@ object QuranData {
         return allAyahs?.filter { it.surahId == surahId } ?: emptyList()
     }
 
-        fun searchAyahs(context: android.content.Context, query: String): List<Ayah> {
+        
+    fun removeTashkeel(text: String): String {
+        return text.replace(Regex("[\\u0617-\\u061A\\u064B-\\u0652\\u0670]"), "")
+    }
+
+    fun normalizeArabic(text: String): String {
+        return removeTashkeel(text)
+            .replace("[أإآٱ]".toRegex(), "ا")
+            .replace("ة", "ه")
+            .replace("ى", "ي")
+            .replace("ؤ", "و")
+            .replace("ئ", "ي")
+    }
+
+    fun searchAyahs(context: android.content.Context, query: String): List<Ayah> {
         if (allAyahs == null) {
             loadAllAyahs(context)
         }
-        val normalizedQuery = query.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ة", "ه")
+        if (query.isBlank()) return emptyList()
+        val normalizedQuery = normalizeArabic(query).trim()
+        
         return allAyahs?.filter { 
-            val normalizedText = it.text.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ة", "ه")
+            val normalizedText = normalizeArabic(it.text)
             normalizedText.contains(normalizedQuery)
-        }?.take(10) ?: emptyList()
+        }?.take(5) ?: emptyList()
     }
 
     private fun loadAllAyahs(context: android.content.Context) {
