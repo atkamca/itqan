@@ -30,6 +30,11 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -105,6 +110,8 @@ fun getErrorColor(type: String, defaultColor: Color): Color {
 }
 
 class MainActivity : ComponentActivity() {
+    private var crashMessage by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -243,7 +250,7 @@ fun ReadingScreen(viewModel: MainViewModel) {
 
         if (currentAyahs.isEmpty()) return@Column
 
-        val quranFont = FontFamily(Font(R.font.amiri_quran))
+        val quranFont = com.example.ui.theme.Quran_Font
         
         HorizontalPager(
             state = pagerState,

@@ -1,0 +1,24 @@
+--- app/src/main/java/com/example/MainActivity.kt
++++ app/src/main/java/com/example/MainActivity.kt
+@@ -107,7 +107,24 @@
+ class MainActivity : ComponentActivity() {
++    private var crashMessage by mutableStateOf<String?>(null)
++
+     override fun onCreate(savedInstanceState: Bundle?) {
+         super.onCreate(savedInstanceState)
++        Thread.setDefaultUncaughtExceptionHandler { _, e ->
++            crashMessage = e.stackTraceToString()
++        }
+         enableEdgeToEdge()
+         setContent {
++            if (crashMessage != null) {
++                MaterialTheme {
++                    androidx.compose.foundation.lazy.LazyColumn(Modifier.fillMaxSize().padding(16.dp)) {
++                        item {
++                            Text(crashMessage ?: "", color = Color.Red, fontSize = 12.sp)
++                        }
++                    }
++                }
++                return@setContent
++            }
+             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
