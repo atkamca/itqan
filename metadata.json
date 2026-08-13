@@ -1,0 +1,8 @@
+{
+  "name": "مراقب الضبط",
+  "description": "تطبيق لعرض آيات القرآن الكريم وتسهيل المراجعة",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
