@@ -58,6 +58,7 @@ import com.example.data.Ayah
 import com.example.data.ErrorLogEntity
 import com.example.data.QuranData
 import com.example.ui.MainViewModel
+import com.example.ui.swipeWatcher
 import com.example.ui.theme.MyApplicationTheme
 import kotlinx.coroutines.launch
 import kotlin.math.max
@@ -195,6 +196,10 @@ fun ReadingScreen(viewModel: MainViewModel) {
     var isRevisionMode by remember { mutableStateOf(false) }
     var revealedWordsCount by remember { mutableIntStateOf(0) }
     
+    // New states for Next Ayah
+    var isNextAyahVisible by remember { mutableStateOf(false) }
+    var revealedNextWordCount by remember { mutableIntStateOf(0) }
+    
     LaunchedEffect(jumpIndex) {
         if (jumpIndex != -1 && jumpIndex < currentAyahs.size) {
             pagerState.scrollToPage(jumpIndex)
@@ -204,458 +209,164 @@ fun ReadingScreen(viewModel: MainViewModel) {
 
     LaunchedEffect(pagerState.currentPage, isRevisionMode) {
         revealedWordsCount = 0
+        isNextAyahVisible = false
+        revealedNextWordCount = 0
     }
 
-    var selectedWordForError by remember { mutableStateOf<Pair<Ayah, String>?>(null) }
-    var selectedAyahForError by remember { mutableStateOf<Ayah?>(null) }
-    var showExistingErrorDialog by remember { mutableStateOf<Pair<String, List<ErrorLogEntity>>?>(null) }
+    var selectedWordForAnalysis by remember { mutableStateOf<Pair<Ayah, String>?>(null) }
+    var showJumpDialog by remember { mutableStateOf(false) }
     
     val currentAyah = currentAyahs.getOrNull(pagerState.currentPage)
-    var showJumpDialog by remember { mutableStateOf(false) }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(bottom = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        TopAppBar(
-            title = {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    SurahDropdown(
-                        selectedSurahId = selectedSurahId,
-                        onSurahSelected = { viewModel.selectSurah(it) }
-                    )
-                    if (currentAyah != null) {
-                        TextButton(onClick = { showJumpDialog = true }) {
-                            Text(
-                                text = "آية ${currentAyah.numberInSurah}",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Icon(Icons.Filled.Search, contentDescription = "انتقال", modifier = Modifier.padding(start = 4.dp).size(16.dp))
-                        }
-                    }
-                }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-            )
+    val nextAyah = currentAyahs.getOrNull(pagerState.currentPage + 1)
+    
+    if (selectedWordForAnalysis != null) {
+        com.example.ui.WordAnalysisBottomSheet(
+            word = selectedWordForAnalysis!!.second,
+            ayah = selectedWordForAnalysis!!.first,
+            viewModel = viewModel,
+            onDismissRequest = { selectedWordForAnalysis = null }
         )
+    }
 
-        if (currentAyahs.isEmpty()) return@Column
-
-        val quranFont = com.example.ui.theme.Quran_Font
-        
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-        ) { page ->
-            val ayah = currentAyahs[page]
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 24.dp, vertical = 16.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(bottom = 24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    val words = ayah.text.split("\\s+".toRegex()).filter { it.isNotBlank() }
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        words.forEachIndexed { index, word ->
-                            val isRevealed = !isRevisionMode || index < revealedWordsCount
-                            
-                            val wordErrors = errorLogs.filter { it.surahId == ayah.surahId && it.ayahNumber == ayah.numberInSurah && it.wordText == word }
-                            val primaryError = wordErrors.maxByOrNull { getErrorWeight(it.errorType) }
-                            
-                            val textColor = if (!isRevealed) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                            else if (primaryError != null) getErrorColor(primaryError.errorType, MaterialTheme.colorScheme.onSurface)
-                                            else MaterialTheme.colorScheme.onSurface
-                                            
-                            val textDecoration = if (primaryError?.errorType == "خطأ في التشكيل") TextDecoration.Underline else TextDecoration.None
-
-                            val bgColor = if (!isRevealed) MaterialTheme.colorScheme.surfaceVariant
-                                          else if (primaryError != null) getErrorColor(primaryError.errorType, Color.Transparent).copy(alpha = 0.15f)
-                                          else Color.Transparent
-    
-                            val annotatedWord = if (!isRevealed) {
-                                buildAnnotatedString { append("••••") }
+    Scaffold(
+        floatingActionButton = {
+            if (nextAyah != null) {
+                ExtendedFloatingActionButton(
+                    onClick = {
+                        if (!isNextAyahVisible) {
+                            isNextAyahVisible = true
+                            revealedNextWordCount = 0
+                        } else {
+                            val nextAyahWords = nextAyah.text.split("\\s+".toRegex()).filter { it.isNotBlank() }
+                            if (revealedNextWordCount < nextAyahWords.size) {
+                                revealedNextWordCount++
                             } else {
-                                buildAnnotatedString {
-                                    val errorChars = wordErrors.mapNotNull { it.charIndex }
-                                    word.forEachIndexed { i, c ->
-                                        if (i in errorChars) {
-                                            withStyle(SpanStyle(color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Black, textDecoration = TextDecoration.Underline)) { append(c.toString()) }
-                                        } else {
-                                            append(c.toString())
-                                        }
-                                    }
-                                }
-                            }
-    
-                            Text(
-                                text = annotatedWord,
-                                fontSize = 32.sp,
-                                lineHeight = 62.sp,
-                                fontFamily = quranFont,
-                                fontWeight = FontWeight.Normal,
-                                textAlign = TextAlign.Center,
-                                color = textColor,
-                                textDecoration = textDecoration,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(bgColor)
-                                    .combinedClickable(
-                                        enabled = isRevealed,
-                                        onClick = {
-                                            if (primaryError != null) {
-                                                showExistingErrorDialog = Pair(word, wordErrors)
-                                            } else {
-                                                viewModel.logError(ayah, word, "تردد / توقف سريع")
-                                            }
-                                        },
-                                        onLongClick = {
-                                            selectedWordForError = Pair(ayah, word)
-                                        }
-                                    )
-                                    .padding(horizontal = 4.dp, vertical = 2.dp)
-                            )
-                        }
-                        
-                        val ayahErrors = errorLogs.filter { it.surahId == ayah.surahId && it.ayahNumber == ayah.numberInSurah && it.wordText == "[الآية]" }
-                        val hasAyahError = ayahErrors.isNotEmpty()
-                        
-                        val badgeColor = if (hasAyahError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                        
-                        Text(
-                            text = "﴿${ayah.numberInSurah}﴾",
-                            fontSize = 32.sp,
-                            fontFamily = quranFont,
-                            color = badgeColor.copy(alpha = 0.8f),
-                            modifier = Modifier
-                                .clickable { selectedAyahForError = ayah }
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                                .align(Alignment.CenterVertically)
-                        )
-                    }
-                }
-            }
-        }
-        
-        ElevatedCard(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-            shape = RoundedCornerShape(24.dp),
-            elevation = CardDefaults.elevatedCardElevation(defaultElevation = 4.dp),
-            colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                // Row 1: Revision Mode & Reveal
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Switch(
-                            checked = isRevisionMode, 
-                            onCheckedChange = { isRevisionMode = it },
-                            colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("وضع المراجعة (إخفاء)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                    }
-                    if (isRevisionMode) {
-                        FilledTonalButton(
-                            onClick = {
-                                currentAyah?.let { ayah ->
-                                    val words = ayah.text.split("\\s+".toRegex()).filter { it.isNotBlank() }
-                                    if (revealedWordsCount < words.size) {
-                                        revealedWordsCount++
-                                    }
-                                }
-                            },
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                        ) {
-                            Icon(Icons.Filled.Visibility, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("كشف كلمة", fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-                
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                // Row 2: Navigation and Fast Error
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    FilledIconButton(
-                        onClick = {
-                            coroutineScope.launch {
-                                if (pagerState.currentPage < currentAyahs.size - 1) {
+                                coroutineScope.launch {
                                     pagerState.animateScrollToPage(pagerState.currentPage + 1)
                                 }
                             }
+                        }
+                    },
+                    icon = { Icon(Icons.Default.Visibility, contentDescription = null) },
+                    text = { Text("الآية الموالية") },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.swipeWatcher(
+                        onSwipeUp = {
+                            val nextAyahWords = nextAyah.text.split("\\s+".toRegex()).filter { it.isNotBlank() }
+                            revealedNextWordCount = nextAyahWords.size
                         },
-                        enabled = pagerState.currentPage < currentAyahs.size - 1,
-                        modifier = Modifier.size(56.dp)
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowForward, "التالي", modifier = Modifier.size(28.dp))
-                    }
-                    
-                    Button(
-                        onClick = {
-                            currentAyah?.let {
-                                viewModel.logError(it, "[الآية]", "تردد في الآية الحالية")
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer),
-                        modifier = Modifier.height(56.dp)
-                    ) {
-                        Icon(Icons.Filled.FlashOn, contentDescription = null, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("تردد سريع (بالآية)", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    }
-                    
-                    FilledIconButton(
-                        onClick = {
-                            coroutineScope.launch {
-                                if (pagerState.currentPage > 0) {
-                                    pagerState.animateScrollToPage(pagerState.currentPage - 1)
-                                }
-                            }
-                        },
-                        enabled = pagerState.currentPage > 0,
-                        modifier = Modifier.size(56.dp)
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "السابق", modifier = Modifier.size(28.dp))
-                    }
-                }
-            }
-        }
-    }
-
-    if (showJumpDialog) {
-        var inputAyah by remember { mutableStateOf("") }
-        AlertDialog(
-            onDismissRequest = { showJumpDialog = false },
-            title = { Text("الانتقال إلى آية") },
-            text = {
-                OutlinedTextField(
-                    value = inputAyah,
-                    onValueChange = { inputAyah = it },
-                    label = { Text("رقم الآية") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        onSwipeDown = {
+                            val nextAyahWords = nextAyah.text.split("\\s+".toRegex()).filter { it.isNotBlank() }
+                            revealedNextWordCount = nextAyahWords.size
+                        }
+                    )
                 )
-            },
-            confirmButton = {
-                Button(onClick = {
-                    val number = inputAyah.toIntOrNull()
-                    if (number != null && number > 0 && number <= currentAyahs.size) {
-                        viewModel.jumpToAyah(number)
-                        showJumpDialog = false
-                    }
-                }) {
-                    Text("انتقال")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showJumpDialog = false }) {
-                    Text("إلغاء")
-                }
             }
-        )
-    }
-
-    if (showExistingErrorDialog != null) {
-        val word = showExistingErrorDialog!!.first
-        val logs = showExistingErrorDialog!!.second
-        AlertDialog(
-            onDismissRequest = { showExistingErrorDialog = null },
-            title = { Text("تفاصيل الخطأ: $word", fontFamily = FontFamily.Serif) },
-            text = {
-                LazyColumn {
-                    items(logs) { log ->
-                        Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Text("الخطأ: ${log.errorType}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                                if (!log.readText.isNullOrBlank()) {
-                                    Text("كيف قرأتها: ${log.readText}", color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 4.dp))
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                Button(onClick = { 
-                    selectedWordForError = Pair(currentAyah!!, word)
-                    showExistingErrorDialog = null
-                }) {
-                    Text("إضافة خطأ جديد للكلمة")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showExistingErrorDialog = null }) {
-                    Text("إغلاق")
-                }
-            }
-        )
-    }
-
-    if (selectedWordForError != null || selectedAyahForError != null) {
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        val isWord = selectedWordForError != null
-        val errorList = if (isWord) wordErrorTypes else ayahErrorTypes
-        var selectedErrorType by remember { mutableStateOf(errorList.first()) }
-        var readTextInput by remember { mutableStateOf("") }
-        var selectedCharIndex by remember { mutableStateOf<Int?>(null) }
-
-        LaunchedEffect(selectedWordForError, selectedAyahForError) {
-            readTextInput = ""
-            selectedCharIndex = null
-        }
-
-        ModalBottomSheet(
-            onDismissRequest = { 
-                selectedWordForError = null
-                selectedAyahForError = null
-            },
-            sheetState = sheetState
+        },
+        floatingActionButtonPosition = FabPosition.Center
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(bottom = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp)
-                    .padding(bottom = 32.dp)
-            ) {
-                item {
-                    Text(
-                        text = if (isWord) "تسجيل خطأ في الكلمة:" else "تسجيل خطأ في الآية:",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        text = if (isWord) selectedWordForError!!.second else "آية رقم ${selectedAyahForError!!.numberInSurah}",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Serif,
-                        modifier = Modifier.padding(bottom = 16.dp, top = 8.dp)
-                    )
-                }
-
-                if (isWord) {
-                    item {
-                        OutlinedTextField(
-                            value = readTextInput,
-                            onValueChange = { readTextInput = it },
-                            label = { Text("كيف قرأتها؟ (اختياري)") },
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
-                        )
-                    }
-                }
-
-                items(errorList) { errorType ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { selectedErrorType = errorType }
-                            .padding(vertical = 12.dp, horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = selectedErrorType == errorType,
-                            onClick = { selectedErrorType = errorType }
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = errorType, 
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                    }
-                }
-
-                if (isWord && (selectedErrorType == "خطأ في التشكيل" || selectedErrorType == "زيادة أو نقصان حرف")) {
-                    item {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text("حدد الحرف أو التشكيل الخاطئ:", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
-                        val chars = selectedWordForError!!.second.toCharArray()
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            chars.forEachIndexed { index, char ->
-                                val isSelected = selectedCharIndex == index
-                                Text(
-                                    text = char.toString(),
-                                    fontSize = 24.sp,
-                                    fontFamily = FontFamily.Serif,
-                                    modifier = Modifier
-                                        .padding(2.dp)
-                                        .clip(CircleShape)
-                                        .background(if (isSelected) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.surfaceVariant)
-                                        .clickable { selectedCharIndex = index }
-                                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                                    color = if (isSelected) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-                }
-
-                item {
-                    Spacer(modifier = Modifier.height(24.dp))
+            TopAppBar(
+                title = {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        TextButton(onClick = { 
-                            selectedWordForError = null
-                            selectedAyahForError = null
-                        }) {
-                            Text("إلغاء")
-                        }
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Button(onClick = {
-                            if (isWord) {
-                                viewModel.logError(
-                                    ayah = selectedWordForError!!.first,
-                                    wordText = selectedWordForError!!.second,
-                                    errorType = selectedErrorType,
-                                    readText = readTextInput.takeIf { it.isNotBlank() },
-                                    charIndex = selectedCharIndex
-                                )
-                            } else {
-                                viewModel.logError(
-                                    ayah = selectedAyahForError!!,
-                                    wordText = "[الآية]",
-                                    errorType = selectedErrorType
+                        SurahDropdown(
+                            selectedSurahId = selectedSurahId,
+                            onSurahSelected = { viewModel.selectSurah(it) }
+                        )
+                        if (currentAyah != null) {
+                            TextButton(onClick = { showJumpDialog = true }) {
+                                Text(
+                                    text = "آية ${currentAyah.numberInSurah}",
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold
                                 )
                             }
-                            selectedWordForError = null
-                            selectedAyahForError = null
-                        }) {
-                            Text("حفظ الخطأ")
+                        }
+                    }
+                },
+                actions = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("مراجعة", modifier = Modifier.padding(end = 8.dp))
+                        Switch(
+                            checked = isRevisionMode,
+                            onCheckedChange = { isRevisionMode = it }
+                        )
+                    }
+                }
+            )
+
+            if (showJumpDialog) {
+                AyahJumpDialog(
+                    currentAyah = currentAyah?.numberInSurah ?: 1,
+                    onDismiss = { showJumpDialog = false },
+                    onJump = { ayahNum ->
+                        viewModel.jumpToAyah(ayahNum)
+                        showJumpDialog = false
+                    }
+                )
+            }
+
+            if (currentAyahs.isEmpty()) return@Column
+
+            val quranFont = com.example.ui.theme.Quran_Font
+            
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+            ) { page ->
+                val ayah = currentAyahs[page]
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 24.dp, vertical = 16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(bottom = 80.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        AyahDisplayView(
+                            ayah = ayah,
+                            isRevisionMode = isRevisionMode,
+                            revealedWordsCount = revealedWordsCount,
+                            errorLogs = errorLogs,
+                            quranFont = quranFont,
+                            viewModel = viewModel,
+                            onWordLongClick = { w -> selectedWordForAnalysis = Pair(ayah, w) },
+                            onAyahLongClick = { /* Mutashabihat for Ayah */ }
+                        )
+                        
+                        if (page == pagerState.currentPage && isNextAyahVisible && nextAyah != null) {
+                            Spacer(modifier = Modifier.height(32.dp))
+                            Divider(modifier = Modifier.padding(horizontal = 32.dp))
+                            Spacer(modifier = Modifier.height(32.dp))
+                            AyahDisplayView(
+                                ayah = nextAyah,
+                                isRevisionMode = true,
+                                revealedWordsCount = revealedNextWordCount,
+                                errorLogs = errorLogs,
+                                quranFont = quranFont,
+                                viewModel = viewModel,
+                                onWordLongClick = { w -> selectedWordForAnalysis = Pair(nextAyah, w) },
+                                onAyahLongClick = { /* Mutashabihat for Ayah */ }
+                            )
                         }
                     }
                 }
@@ -664,32 +375,136 @@ fun ReadingScreen(viewModel: MainViewModel) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
+@Composable
+fun AyahDisplayView(
+    ayah: Ayah,
+    isRevisionMode: Boolean,
+    revealedWordsCount: Int,
+    errorLogs: List<ErrorLogEntity>,
+    quranFont: androidx.compose.ui.text.font.FontFamily,
+    viewModel: MainViewModel,
+    onWordLongClick: (String) -> Unit,
+    onAyahLongClick: () -> Unit
+) {
+    val words = ayah.text.split("\\s+".toRegex()).filter { it.isNotBlank() }
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        words.forEachIndexed { index, word ->
+            val isRevealed = !isRevisionMode || index < revealedWordsCount
+            
+            val wordErrors = errorLogs.filter { it.surahId == ayah.surahId && it.ayahNumber == ayah.numberInSurah && it.wordText == word }
+            val primaryError = wordErrors.minByOrNull { it.errorWeight } // Lower is worse
+            
+            val textColor = if (!isRevealed) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            else if (primaryError != null) getErrorColor(primaryError.errorType, MaterialTheme.colorScheme.onSurface)
+                            else MaterialTheme.colorScheme.onSurface
+                            
+            val textDecoration = if (primaryError?.errorType?.contains("تشكيل") == true) TextDecoration.Underline else TextDecoration.None
+
+            val bgColor = if (!isRevealed) MaterialTheme.colorScheme.surfaceVariant
+                          else if (primaryError != null) getErrorColor(primaryError.errorType, Color.Transparent).copy(alpha = 0.15f)
+                          else Color.Transparent
+
+            val annotatedWord = if (!isRevealed) {
+                buildAnnotatedString { append("••••") }
+            } else {
+                buildAnnotatedString {
+                    val errorChars = wordErrors.mapNotNull { it.charIndex }
+                    word.forEachIndexed { i, c ->
+                        if (i in errorChars) {
+                            withStyle(SpanStyle(color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Black, textDecoration = TextDecoration.Underline)) { append(c.toString()) }
+                        } else {
+                            append(c.toString())
+                        }
+                    }
+                }
+            }
+
+            Text(
+                text = annotatedWord,
+                fontSize = 32.sp,
+                lineHeight = 62.sp,
+                fontFamily = quranFont,
+                fontWeight = FontWeight.Normal,
+                textAlign = TextAlign.Center,
+                color = textColor,
+                textDecoration = textDecoration,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(bgColor)
+                    .combinedClickable(
+                        enabled = true,
+                        onClick = {
+                            if (!isRevealed) {
+                                // Handled externally via count, but if we want individual reveal:
+                            } else {
+                                // Default tap
+                            }
+                        },
+                        onLongClick = {
+                            if (isRevealed) {
+                                onWordLongClick(word)
+                            }
+                        }
+                    )
+                    .swipeWatcher(
+                        onSwipeDown = {
+                            if (isRevealed) {
+                                viewModel.logError(ayah, word, "توقف تام ونسيان الكلمة")
+                            }
+                        },
+                        onSwipeUp = {
+                            if (isRevealed) {
+                                viewModel.logError(ayah, word, "تردد / شك")
+                            }
+                        }
+                    )
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
+            )
+        }
+        
+        val ayahErrors = errorLogs.filter { it.surahId == ayah.surahId && it.ayahNumber == ayah.numberInSurah && it.wordText == "[الآية]" }
+        val hasAyahError = ayahErrors.isNotEmpty()
+        
+        val badgeColor = if (hasAyahError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+        
+        Text(
+            text = "﴿${ayah.numberInSurah}﴾",
+            fontSize = 32.sp,
+            fontFamily = quranFont,
+            color = badgeColor.copy(alpha = 0.8f),
+            modifier = Modifier
+                .combinedClickable(
+                    onClick = {},
+                    onLongClick = { onAyahLongClick() }
+                )
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .align(Alignment.CenterVertically)
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
+
 @Composable
 fun SurahDropdown(selectedSurahId: Int, onSurahSelected: (Int) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
-    val surahs = QuranData.surahs
-    val selectedSurah = surahs.find { it.id == selectedSurahId } ?: surahs[0]
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = it },
-    ) {
-        OutlinedTextField(
-            value = selectedSurah.name,
-            onValueChange = {},
-            readOnly = true,
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier
-                .menuAnchor()
-                .width(180.dp),
-            textStyle = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
-            colors = OutlinedTextFieldDefaults.colors(
-                unfocusedBorderColor = Color.Transparent,
-                focusedBorderColor = Color.Transparent
+    val surahs = com.example.data.QuranData.surahs
+    val selectedSurah = surahs.find { it.id == selectedSurahId }
+    
+    Box {
+        TextButton(onClick = { expanded = true }) {
+            Text(
+                text = selectedSurah?.name ?: "السورة",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold
             )
-        )
-        ExposedDropdownMenu(
+        }
+        DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
             modifier = Modifier.heightIn(max = 300.dp)
@@ -705,6 +520,35 @@ fun SurahDropdown(selectedSurahId: Int, onSurahSelected: (Int) -> Unit) {
             }
         }
     }
+}
+
+@Composable
+fun AyahJumpDialog(currentAyah: Int, onDismiss: () -> Unit, onJump: (Int) -> Unit) {
+    var text by remember { mutableStateOf(currentAyah.toString()) }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("الانتقال لآية") },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it.filter { char -> char.isDigit() } },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                text.toIntOrNull()?.let { onJump(it) }
+            }) {
+                Text("انتقال")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("إلغاء")
+            }
+        }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

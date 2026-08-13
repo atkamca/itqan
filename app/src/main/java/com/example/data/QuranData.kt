@@ -54,6 +54,17 @@ object QuranData {
         return allAyahs?.filter { it.surahId == surahId } ?: emptyList()
     }
 
+        fun searchAyahs(context: android.content.Context, query: String): List<Ayah> {
+        if (allAyahs == null) {
+            loadAllAyahs(context)
+        }
+        val normalizedQuery = query.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ة", "ه")
+        return allAyahs?.filter { 
+            val normalizedText = it.text.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ة", "ه")
+            normalizedText.contains(normalizedQuery)
+        }?.take(10) ?: emptyList()
+    }
+
     private fun loadAllAyahs(context: android.content.Context) {
         val ayahsList = mutableListOf<Ayah>()
         var loadedFromAssets = false

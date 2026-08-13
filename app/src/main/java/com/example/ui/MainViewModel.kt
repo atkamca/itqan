@@ -31,6 +31,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _jumpToAyahIndex = MutableStateFlow(-1)
     val jumpToAyahIndex: StateFlow<Int> = _jumpToAyahIndex.asStateFlow()
 
+    private val _searchResults = MutableStateFlow<List<Ayah>>(emptyList())
+    val searchResults: StateFlow<List<Ayah>> = _searchResults.asStateFlow()
+
     init {
         loadSurahData(1)
     }
@@ -64,7 +67,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _jumpToAyahIndex.value = -1
     }
 
-    fun logError(ayah: Ayah, wordText: String, errorType: String, readText: String? = null, charIndex: Int? = null) {
+    fun searchSimilarAyahs(query: String) {
+        viewModelScope.launch {
+            if (query.length < 2) {
+                _searchResults.value = emptyList()
+                return@launch
+            }
+            val results = withContext(Dispatchers.IO) {
+                QuranData.searchAyahs(getApplication(), query)
+            }
+            _searchResults.value = results
+        }
+    }
+
+    fun clearSearch() {
+        _searchResults.value = emptyList()
+    }
+
+    fun logError(
+        ayah: Ayah, 
+        wordText: String, 
+        errorType: String, 
+        readText: String? = null, 
+        charIndex: Int? = null,
+        linkedAyahId: Int? = null
+    ) {
+        // Calculate weight based on rules
+        val weight = when {
+            errorType.contains("تردد") || errorType.contains("شك") -> -5
+            errorType.contains("تشكيل") || errorType.contains("حرف") -> -10
+            errorType.contains("نسيان") || errorType.contains("متشابه") || errorType.contains("توقف") -> -20
+            else -> -10
+        }
+
         viewModelScope.launch(Dispatchers.IO) {
             dao.insertLog(
                 ErrorLogEntity(
@@ -75,6 +110,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     errorType = errorType,
                     readText = readText,
                     charIndex = charIndex,
+                    errorWeight = weight,
+                    linkedAyahId = linkedAyahId,
                     timestamp = System.currentTimeMillis()
                 )
             )

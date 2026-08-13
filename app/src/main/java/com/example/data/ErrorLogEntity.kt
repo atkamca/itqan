@@ -13,5 +13,7 @@ data class ErrorLogEntity(
     val errorType: String,
     val readText: String? = null,
     val charIndex: Int? = null,
+    val errorWeight: Int = 0,
+    val linkedAyahId: Int? = null,
     val timestamp: Long = System.currentTimeMillis()
 )
