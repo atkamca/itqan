@@ -124,21 +124,45 @@ fun MorakebApp(viewModel: MainViewModel) {
     var selectedTab by remember { mutableIntStateOf(0) }
     Scaffold(
         bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceVariant) {
-                NavigationBarItem(
-                    icon = { Icon(Icons.Filled.MenuBook, contentDescription = "المراجعة") },
-                    label = { Text("المراجعة") },
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 }
-                )
-                NavigationBarItem(
-                    icon = { Icon(Icons.Filled.Analytics, contentDescription = "التقارير") },
-                    label = { Text("التقارير") },
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 }
-                )
+            androidx.compose.material3.Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+                shadowElevation = 8.dp,
+                color = MaterialTheme.colorScheme.surface
+            ) {
+                NavigationBar(
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
+                    tonalElevation = 0.dp,
+                    windowInsets = WindowInsets(0, 0, 0, 0)
+                ) {
+                    NavigationBarItem(
+                        icon = { Icon(Icons.Filled.MenuBook, contentDescription = "المراجعة") },
+                        label = { Text("المراجعة", fontWeight = FontWeight.Bold) },
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        colors = NavigationBarItemDefaults.colors(
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                            selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            selectedTextColor = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                    NavigationBarItem(
+                        icon = { Icon(Icons.Filled.Analytics, contentDescription = "التقارير") },
+                        label = { Text("التقارير", fontWeight = FontWeight.Bold) },
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        colors = NavigationBarItemDefaults.colors(
+                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                            selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            selectedTextColor = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                }
             }
-        }
+        },
+        containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding)) {
             if (selectedTab == 0) {
@@ -228,21 +252,17 @@ fun ReadingScreen(viewModel: MainViewModel) {
                 .fillMaxWidth(),
         ) { page ->
             val ayah = currentAyahs[page]
-            ElevatedCard(
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 16.dp, vertical = 16.dp),
-                shape = RoundedCornerShape(24.dp),
-                elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
-                colors = CardDefaults.elevatedCardColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                contentAlignment = Alignment.Center
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
-                        .padding(24.dp),
+                        .padding(bottom = 24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
@@ -315,22 +335,16 @@ fun ReadingScreen(viewModel: MainViewModel) {
                         val ayahErrors = errorLogs.filter { it.surahId == ayah.surahId && it.ayahNumber == ayah.numberInSurah && it.wordText == "[الآية]" }
                         val hasAyahError = ayahErrors.isNotEmpty()
                         
-                        val badgeBg = if (hasAyahError) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer
-                        val badgeColor = if (hasAyahError) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSecondaryContainer
-                        
-                        val borderModifier = if (hasAyahError) Modifier.border(2.dp, Color(0xFF1976D2), RoundedCornerShape(16.dp)) else Modifier
+                        val badgeColor = if (hasAyahError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                         
                         Text(
                             text = "﴿${ayah.numberInSurah}﴾",
-                            fontSize = 28.sp,
+                            fontSize = 32.sp,
                             fontFamily = quranFont,
-                            color = badgeColor,
+                            color = badgeColor.copy(alpha = 0.8f),
                             modifier = Modifier
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(badgeBg)
-                                .then(borderModifier)
                                 .clickable { selectedAyahForError = ayah }
-                                .padding(horizontal = 12.dp, vertical = 4.dp)
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
                                 .align(Alignment.CenterVertically)
                         )
                     }
@@ -724,8 +738,8 @@ fun ReportsScreen(viewModel: MainViewModel) {
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        CenterAlignedTopAppBar(
-            title = { Text("التقارير ونقاط الضعف", fontWeight = FontWeight.Bold) },
+        TopAppBar(
+            title = { Text("التقارير ونقاط الضعف", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge) },
             actions = {
                 if (errorLogs.isNotEmpty()) {
                     IconButton(onClick = { viewModel.clearLogs() }) {
@@ -733,7 +747,7 @@ fun ReportsScreen(viewModel: MainViewModel) {
                     }
                 }
             },
-            colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+            colors = TopAppBarDefaults.topAppBarColors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant,
                 titleContentColor = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -749,7 +763,7 @@ fun ReportsScreen(viewModel: MainViewModel) {
             item {
                 ElevatedCard(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(28.dp),
+                    shape = RoundedCornerShape(24.dp),
                     elevation = CardDefaults.elevatedCardElevation(defaultElevation = 0.dp),
                     colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                 ) {
