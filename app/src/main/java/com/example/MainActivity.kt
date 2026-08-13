@@ -136,11 +136,30 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MorakebApp(viewModel: MainViewModel) {
     var selectedTab by remember { mutableIntStateOf(0) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val snackbarMessage by viewModel.snackbarMessage.collectAsStateWithLifecycle()
+
+    LaunchedEffect(snackbarMessage) {
+        snackbarMessage?.let { msg ->
+            val result = snackbarHostState.showSnackbar(
+                message = msg,
+                actionLabel = "تراجع",
+                duration = SnackbarDuration.Short
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                viewModel.undoLastError()
+            }
+            viewModel.clearSnackbar()
+        }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             androidx.compose.material3.Surface(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .navigationBarsPadding()
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
                 shadowElevation = 8.dp,
@@ -204,9 +223,7 @@ fun ReadingScreen(viewModel: MainViewModel) {
     var isRevisionMode by remember { mutableStateOf(true) }
     var revealedWordsCount by remember { mutableIntStateOf(0) }
     
-    // New states for Next Ayah
-    var isNextAyahVisible by remember { mutableStateOf(false) }
-    var revealedNextWordCount by remember { mutableIntStateOf(0) }
+
     
     LaunchedEffect(jumpIndex) {
         if (jumpIndex != -1 && jumpIndex < currentAyahs.size) {
@@ -217,8 +234,7 @@ fun ReadingScreen(viewModel: MainViewModel) {
 
     LaunchedEffect(pagerState.currentPage, isRevisionMode) {
         revealedWordsCount = 0
-        isNextAyahVisible = false
-        revealedNextWordCount = 0
+
     }
 
     var selectedWordForAnalysis by remember { mutableStateOf<Pair<Ayah, String>?>(null) }
@@ -237,40 +253,7 @@ fun ReadingScreen(viewModel: MainViewModel) {
     }
 
     Scaffold(
-        floatingActionButton = {
-            if (isRevisionMode && nextAyah != null) {
-                ExtendedFloatingActionButton(
-                    onClick = { /* Handled by combinedClickable below */ },
-                    icon = { Icon(Icons.Default.Visibility, contentDescription = null) },
-                    text = { Text("الآية الموالية") },
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.combinedClickable(
-                        onClick = {
-                            if (!isNextAyahVisible) {
-                                isNextAyahVisible = true
-                                revealedNextWordCount = 0
-                            } else {
-                                val nextAyahWords = nextAyah.text.split("\\s+".toRegex()).filter { it.isNotBlank() }
-                                if (revealedNextWordCount < nextAyahWords.size) {
-                                    revealedNextWordCount++
-                                } else {
-                                    coroutineScope.launch {
-                                        pagerState.animateScrollToPage(pagerState.currentPage + 1)
-                                    }
-                                }
-                            }
-                        },
-                        onLongClick = {
-                            // Long press to reveal entire next ayah
-                            isNextAyahVisible = true
-                            revealedNextWordCount = nextAyah.text.split("\\s+".toRegex()).filter { it.isNotBlank() }.size
-                        }
-                    )
-                )
-            }
-        },
-        floatingActionButtonPosition = FabPosition.Center
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -313,8 +296,10 @@ fun ReadingScreen(viewModel: MainViewModel) {
             )
 
             if (showJumpDialog) {
+                val totalAyahs = com.example.data.QuranData.surahs.find { it.id == selectedSurahId }?.ayahCount ?: 1
                 AyahJumpDialog(
                     currentAyah = currentAyah?.numberInSurah ?: 1,
+                    totalAyahs = totalAyahs,
                     onDismiss = { showJumpDialog = false },
                     onJump = { ayahNum ->
                         viewModel.jumpToAyah(ayahNum)
@@ -519,67 +504,189 @@ fun AyahDisplayView(
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun ReportsScreen(viewModel: MainViewModel) {
-    // Just a placeholder so it compiles
-    androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize())
-}
+    val errorLogs by viewModel.errorLogs.collectAsStateWithLifecycle()
+    var showClearDialog by remember { mutableStateOf(false) }
 
-@Composable
-fun SurahDropdown(selectedSurahId: Int, onSurahSelected: (Int) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    val surahs = com.example.data.QuranData.surahs
-    val selectedSurah = surahs.find { it.id == selectedSurahId }
-    
-    Box {
-        TextButton(onClick = { expanded = true }) {
-            Text(
-                text = selectedSurah?.name ?: "السورة",
-                fontSize = 20.sp,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
-            )
-        }
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier.heightIn(max = 300.dp)
-        ) {
-            surahs.forEach { surah ->
-                DropdownMenuItem(
-                    text = { Text(surah.name) },
-                    onClick = {
-                        onSurahSelected(surah.id)
-                        expanded = false
+    if (showClearDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearDialog = false },
+            title = { Text("مسح السجل") },
+            text = { Text("هل أنت متأكد من مسح جميع الأخطاء المسجلة؟ لا يمكن التراجع عن هذا الإجراء.") },
+            confirmButton = {
+                TextButton(onClick = { 
+                    viewModel.clearLogs()
+                    showClearDialog = false 
+                }) {
+                    Text("مسح", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearDialog = false }) {
+                    Text("إلغاء")
+                }
+            }
+        )
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("تقرير الأخطاء", fontWeight = FontWeight.Bold) },
+                actions = {
+                    if (errorLogs.isNotEmpty()) {
+                        IconButton(onClick = { showClearDialog = true }) {
+                            Icon(Icons.Default.Delete, contentDescription = "مسح السجل", tint = MaterialTheme.colorScheme.error)
+                        }
                     }
-                )
+                }
+            )
+        },
+        containerColor = MaterialTheme.colorScheme.background
+    ) { paddingValues ->
+        if (errorLogs.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.Analytics, contentDescription = null, modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.surfaceVariant)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("لا توجد أخطاء مسجلة بعد. أحسنت!", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 18.sp)
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(paddingValues),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(errorLogs) { log ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "${log.surahName} - آية ${log.ayahNumber}",
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontSize = 16.sp
+                                )
+                                val dateFormat = android.text.format.DateFormat.format("yyyy-MM-dd HH:mm", log.timestamp)
+                                Text(text = dateFormat.toString(), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            
+                            Text(
+                                text = "الكلمة: ${log.wordText}",
+                                fontFamily = com.example.ui.theme.Quran_Font,
+                                fontSize = 24.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.FlashOn, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(text = log.errorType, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                            }
+                            
+                            if (!log.readText.isNullOrEmpty()) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(text = "تمت قراءتها: ${log.readText}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AyahJumpDialog(currentAyah: Int, onDismiss: () -> Unit, onJump: (Int) -> Unit) {
-    var text by remember { mutableStateOf(currentAyah.toString()) }
+fun SurahDropdown(selectedSurahId: Int, onSurahSelected: (Int) -> Unit) {
+    var showSheet by remember { mutableStateOf(false) }
+    val surahs = com.example.data.QuranData.surahs
+    val selectedSurah = surahs.find { it.id == selectedSurahId }
     
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("الانتقال لآية") },
-        text = {
-            OutlinedTextField(
-                value = text,
-                onValueChange = { text = it.filter { char -> char.isDigit() } },
-                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                text.toIntOrNull()?.let { onJump(it) }
-            }) {
-                Text("انتقال")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("إلغاء")
+    TextButton(onClick = { showSheet = true }, modifier = Modifier.clip(RoundedCornerShape(8.dp))) {
+        Text(
+            text = selectedSurah?.name ?: "السورة",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+    }
+
+    if (showSheet) {
+        ModalBottomSheet(onDismissRequest = { showSheet = false }) {
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Text("اختر السورة", fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 16.dp))
+                LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                    items(surahs) { surah ->
+                        val isSelected = surah.id == selectedSurahId
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                                .clickable {
+                                    onSurahSelected(surah.id)
+                                    showSheet = false
+                                }
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(surah.name, fontSize = 18.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, color = if(isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
+                            Text("${surah.ayahCount} آية", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
             }
         }
-    )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+fun AyahJumpDialog(currentAyah: Int, totalAyahs: Int, onDismiss: () -> Unit, onJump: (Int) -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+            Text("الانتقال إلى آية", fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 16.dp))
+            
+            LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f, fill = false)) {
+                item {
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        for (i in 1..totalAyahs) {
+                            val isSelected = i == currentAyah
+                            Box(
+                                modifier = Modifier
+                                    .size(60.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
+                                    .clickable { onJump(i) },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = i.toString(),
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
 }

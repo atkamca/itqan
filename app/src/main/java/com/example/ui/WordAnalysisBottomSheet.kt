@@ -3,10 +3,13 @@ package com.example.ui
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -57,10 +60,17 @@ fun WordAnalysisBottomSheet(
     viewModel: MainViewModel,
     onDismissRequest: () -> Unit
 ) {
-    var searchQuery by remember { mutableStateOf("") }
+    val isAyahMode = word == "[الآية]"
+    val normalizedWord = remember(word) { com.example.data.QuranData.normalizeArabic(word) }
+    var searchQuery by remember { mutableStateOf(if (isAyahMode) "" else normalizedWord) }
     val searchResults by viewModel.searchResults.collectAsStateWithLifecycle()
     var activeTab by remember { mutableIntStateOf(0) }
-    val isAyahMode = word == "[الآية]"
+    
+    LaunchedEffect(word) {
+        if (!isAyahMode) {
+            viewModel.searchSimilarAyahs(normalizedWord)
+        }
+    }
 
     ModalBottomSheet(
         onDismissRequest = { 
@@ -198,8 +208,8 @@ fun WordAnalysisBottomSheet(
                                                 TextButton(onClick = { isMadd = false; step = 2 }, modifier = Modifier.fillMaxWidth()) { Text("أضفنا حرف") }
                                             }
                                         } else {
-                                            val options = if (isMadd) listOf("ا", "و", "ي", "ى") else listOf("س", "ص", "ض", "ظ", "ذ", "ز", "ت", "ط", "ق", "ك", "ح", "خ", "ه", "ء")
-                                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            val options = if (isMadd) listOf("ا", "و", "ي", "ى") else listOf("ا", "ب", "ت", "ث", "ج", "ح", "خ", "د", "ذ", "ر", "ز", "س", "ش", "ص", "ض", "ط", "ظ", "ع", "غ", "ف", "ق", "ك", "ل", "م", "ن", "ه", "و", "ي", "ء", "ى", "ة")
+                                            FlowRow(modifier = Modifier.verticalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                                 options.forEach { opt ->
                                                     Box(
                                                         modifier = Modifier
@@ -253,40 +263,50 @@ fun InteractiveLetterBox(
     val isMadd = charChunk.length == 1 && charChunk in listOf("ا", "و", "ي", "ى")
     val maddLetters = listOf("ا", "و", "ي", "ى")
     val harakat = listOf("َ", "ُ", "ِ", "ْ", "ّ", "ً", "ٌ", "ٍ", "َّ", "ُّ", "ِّ")
-    // Note: To keep the letter dial simple, just some common similar letters, or a generic placeholder for "replaced letter"
-    val similarLetters = listOf("س", "ص", "ض", "ظ", "ذ", "ز", "ت", "ط", "ق", "ك", "ح", "خ", "ه", "ء") 
+    val similarLetters = listOf("ا", "ب", "ت", "ث", "ج", "ح", "خ", "د", "ذ", "ر", "ز", "س", "ش", "ص", "ض", "ط", "ظ", "ع", "غ", "ف", "ق", "ك", "ل", "م", "ن", "ه", "و", "ي", "ء", "ى", "ة") 
 
     Box(contentAlignment = Alignment.Center) {
         if (showDialType != null) {
-            Box(
-                modifier = Modifier
-                    .offset(y = if (showDialType == "letter") 60.dp else (-60).dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.primaryContainer)
-                    .padding(8.dp)
-                    .widthIn(max = 200.dp)
+            androidx.compose.ui.window.Popup(
+                alignment = Alignment.TopCenter,
+                offset = IntOffset(0, if (showDialType == "letter") 180 else -180),
+                onDismissRequest = { showDialType = null },
+                properties = androidx.compose.ui.window.PopupProperties(focusable = true, dismissOnClickOutside = true)
             ) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.primaryContainer)
+                        .padding(12.dp)
+                        .widthIn(max = 280.dp)
+                ) {
                     val options = when (showDialType) {
                         "madd" -> maddLetters.filter { it != charChunk }
                         "haraka" -> harakat.filter { !charChunk.contains(it) }
                         "letter" -> similarLetters
                         else -> emptyList()
                     }
-                    options.forEach { opt ->
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surface)
-                                .clickable {
-                                    showDialType = null
-                                    if (options == harakat) onDiacriticChange(opt)
-                                    else onReplaceLetter(opt)
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(text = if (showDialType == "haraka") "ـ$opt" else opt, fontSize = 20.sp, color = MaterialTheme.colorScheme.onSurface)
+                    androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+                        columns = androidx.compose.foundation.lazy.grid.GridCells.Adaptive(minSize = 48.dp),
+                        modifier = Modifier.heightIn(max = 240.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(options) { opt ->
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.surface)
+                                    .clickable {
+                                        showDialType = null
+                                        if (options == harakat) onDiacriticChange(opt)
+                                        else onReplaceLetter(opt)
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(text = if (showDialType == "haraka") "ـ$opt" else opt, fontSize = 28.sp, color = MaterialTheme.colorScheme.onSurface)
+                            }
                         }
                     }
                 }

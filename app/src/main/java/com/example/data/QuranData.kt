@@ -56,7 +56,7 @@ object QuranData {
 
         
     fun removeTashkeel(text: String): String {
-        return text.replace(Regex("[\\u0617-\\u061A\\u064B-\\u0652\\u0670]"), "")
+        return text.replace(Regex("[\\u0610-\\u061A\\u064B-\\u065F\\u0670\\u06D6-\\u06ED]"), "")
     }
 
     fun normalizeArabic(text: String): String {

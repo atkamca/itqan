@@ -34,6 +34,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _searchResults = MutableStateFlow<List<Ayah>>(emptyList())
     val searchResults: StateFlow<List<Ayah>> = _searchResults.asStateFlow()
 
+    private val _snackbarMessage = MutableStateFlow<String?>(null)
+    val snackbarMessage: StateFlow<String?> = _snackbarMessage.asStateFlow()
+
+    fun clearSnackbar() {
+        _snackbarMessage.value = null
+    }
+
+    fun undoLastError() {
+        viewModelScope.launch(Dispatchers.IO) {
+            dao.deleteLatestLog()
+        }
+    }
+
     init {
         loadSurahData(1)
     }
@@ -115,6 +128,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     timestamp = System.currentTimeMillis()
                 )
             )
+            _snackbarMessage.value = "تم تسجيل: $errorType"
         }
     }
 

@@ -15,4 +15,7 @@ interface ErrorLogDao {
 
     @Query("DELETE FROM error_logs")
     suspend fun clearAll()
+
+    @Query("DELETE FROM error_logs WHERE id = (SELECT id FROM error_logs ORDER BY timestamp DESC LIMIT 1)")
+    suspend fun deleteLatestLog()
 }
