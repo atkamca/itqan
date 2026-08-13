@@ -18,10 +18,12 @@ import androidx.core.view.WindowCompat
 private val LightColorScheme = lightColorScheme(
     primary = EmeraldPrimary,
     onPrimary = androidx.compose.ui.graphics.Color.White,
-    primaryContainer = EmeraldSecondary.copy(alpha = 0.2f),
+    primaryContainer = EmeraldSecondary.copy(alpha = 0.1f),
     onPrimaryContainer = EmeraldPrimary,
-    secondary = EmeraldSecondary,
+    secondary = GoldAccent,
     onSecondary = androidx.compose.ui.graphics.Color.White,
+    secondaryContainer = GoldAccentVariant.copy(alpha = 0.15f),
+    onSecondaryContainer = GoldAccent,
     tertiary = EmeraldTertiary,
     background = BeigeBackground,
     onBackground = TextDark,
@@ -37,17 +39,19 @@ private val LightColorScheme = lightColorScheme(
 private val DarkColorScheme = darkColorScheme(
     primary = EmeraldSecondary,
     onPrimary = OliveBackground,
-    primaryContainer = EmeraldPrimary.copy(alpha = 0.4f),
+    primaryContainer = EmeraldPrimary.copy(alpha = 0.3f),
     onPrimaryContainer = EmeraldSecondary,
-    secondary = EmeraldSecondary,
+    secondary = GoldAccentVariant,
     onSecondary = OliveBackground,
+    secondaryContainer = GoldAccent.copy(alpha = 0.3f),
+    onSecondaryContainer = GoldAccentVariant,
     tertiary = EmeraldTertiary,
     background = OliveBackground,
     onBackground = TextLight,
     surface = OliveSurface,
     onSurface = TextLight,
     surfaceVariant = OliveSurfaceVariant,
-    onSurfaceVariant = TextLight.copy(alpha = 0.8f),
+    onSurfaceVariant = TextLight.copy(alpha = 0.9f),
     error = ErrorDark,
     errorContainer = ErrorContainerDark,
     onErrorContainer = ErrorDark
@@ -67,18 +71,17 @@ fun MyApplicationTheme(
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }
-
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as? Activity)?.window
             if (window != null) {
-                window.statusBarColor = colorScheme.background.toArgb()
+                window.statusBarColor = androidx.compose.ui.graphics.Color.Transparent.toArgb()
                 WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+                WindowCompat.setDecorFitsSystemWindows(window, false)
             }
         }
     }
-
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography,

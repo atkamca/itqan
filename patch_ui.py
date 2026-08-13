@@ -1,4 +1,6 @@
-package com.example.ui
+import re
+
+code = """package com.example.ui
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -249,3 +251,9 @@ fun WordAnalysisBottomSheet(
         }
     }
 }
+"""
+
+with open('app/src/main/java/com/example/ui/WordAnalysisBottomSheet.kt', 'w') as f:
+    f.write(code)
+
+print("Updated WordAnalysisBottomSheet.kt")

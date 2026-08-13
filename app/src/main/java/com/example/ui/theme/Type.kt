@@ -2,14 +2,16 @@ package com.example.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import com.example.R
 
-// استخدام خطوط النظام الافتراضية لمنع انهيار التطبيق
-// يمكنك لاحقاً إعادة تفعيل الخطوط المخصصة بعد التأكد من وجودها في مجلد res/font/
 val UI_Font = FontFamily.SansSerif
-val Quran_Font = FontFamily.Serif
+val Quran_Font = FontFamily(
+    Font(R.font.uthmanic_hafs, FontWeight.Normal)
+)
 
 val Typography = Typography(
     displayLarge = TextStyle(

@@ -3,6 +3,27 @@ package com.example.data
 data class Surah(val id: Int, val name: String, val ayahCount: Int)
 data class Ayah(val surahId: Int, val surahName: String, val numberInSurah: Int, val text: String)
 
+fun String.normalizeQuranText(): String {
+    return this
+        // 1. Convert specific letters and diacritics before they get stripped
+        .replace("\u0670", "ا") // الألف الخنجرية
+        .replace("\u0671", "ا") // ألف الوصل
+        .replace("آ", "ا") // الألف الممدودة
+        .replace("أ", "ا") // همزة قطع
+        .replace("إ", "ا") // همزة قطع
+        .replace("ٱ", "ا") // ألف وصل أخرى إن وجدت
+        .replace("ى", "ي") // الياء المقصورة
+        .replace("\u06E2", "ي") // الياء الصغيرة
+        .replace("ؤ", "و")
+        .replace("ئ", "ي")
+        .replace("ة", "ه")
+        // 2. Remove signs (Sila etc)
+        .replace("\u06E5", "") // الواو الصغيرة / صلة صغرى
+        .replace("\u06E6", "") // الياء الصغيرة / صلة
+        // 3. Remove all Tashkeel
+        .replace(Regex("[\\u0610-\\u061A\\u064B-\\u065F\\u06D6-\\u06ED]"), "")
+}
+
 object QuranData {
     val surahs = listOf(
         Surah(1, "الفاتحة", 7), Surah(2, "البقرة", 286), Surah(3, "آل عمران", 200),
@@ -54,29 +75,15 @@ object QuranData {
         return allAyahs?.filter { it.surahId == surahId } ?: emptyList()
     }
 
-        
-    fun removeTashkeel(text: String): String {
-        return text.replace(Regex("[\\u0610-\\u061A\\u064B-\\u065F\\u0670\\u06D6-\\u06ED]"), "")
-    }
-
-    fun normalizeArabic(text: String): String {
-        return removeTashkeel(text)
-            .replace("[أإآٱ]".toRegex(), "ا")
-            .replace("ة", "ه")
-            .replace("ى", "ي")
-            .replace("ؤ", "و")
-            .replace("ئ", "ي")
-    }
-
     fun searchAyahs(context: android.content.Context, query: String): List<Ayah> {
         if (allAyahs == null) {
             loadAllAyahs(context)
         }
         if (query.isBlank()) return emptyList()
-        val normalizedQuery = normalizeArabic(query).trim()
+        val normalizedQuery = query.normalizeQuranText().trim()
         
         return allAyahs?.filter { 
-            val normalizedText = normalizeArabic(it.text)
+            val normalizedText = it.text.normalizeQuranText()
             normalizedText.contains(normalizedQuery)
         }?.take(5) ?: emptyList()
     }

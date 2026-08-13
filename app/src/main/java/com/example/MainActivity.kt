@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.animation.*
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
@@ -29,6 +30,7 @@ import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.*
 
 import androidx.compose.runtime.getValue
@@ -43,6 +45,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material3.minimumInteractiveComponentSize
 
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.graphics.Color
@@ -133,6 +136,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(androidx.compose.animation.ExperimentalAnimationApi::class)
 @Composable
 fun MorakebApp(viewModel: MainViewModel) {
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -160,10 +164,10 @@ fun MorakebApp(viewModel: MainViewModel) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .navigationBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
-                shadowElevation = 8.dp,
-                color = MaterialTheme.colorScheme.surface
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                shape = androidx.compose.foundation.shape.RoundedCornerShape(32.dp),
+                shadowElevation = 12.dp,
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
             ) {
                 NavigationBar(
                     containerColor = androidx.compose.ui.graphics.Color.Transparent,
@@ -172,24 +176,28 @@ fun MorakebApp(viewModel: MainViewModel) {
                 ) {
                     NavigationBarItem(
                         icon = { Icon(Icons.Filled.MenuBook, contentDescription = "المراجعة") },
-                        label = { Text("المراجعة", fontWeight = FontWeight.Bold) },
+                        label = { Text("المراجعة", fontWeight = FontWeight.Bold, fontFamily = com.example.ui.theme.UI_Font) },
                         selected = selectedTab == 0,
                         onClick = { selectedTab = 0 },
                         colors = NavigationBarItemDefaults.colors(
                             indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                            selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            selectedTextColor = MaterialTheme.colorScheme.primary
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     )
                     NavigationBarItem(
                         icon = { Icon(Icons.Filled.Analytics, contentDescription = "التقارير") },
-                        label = { Text("التقارير", fontWeight = FontWeight.Bold) },
+                        label = { Text("التقارير", fontWeight = FontWeight.Bold, fontFamily = com.example.ui.theme.UI_Font) },
                         selected = selectedTab == 1,
                         onClick = { selectedTab = 1 },
                         colors = NavigationBarItemDefaults.colors(
                             indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                            selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                            selectedTextColor = MaterialTheme.colorScheme.primary
+                            selectedIconColor = MaterialTheme.colorScheme.primary,
+                            selectedTextColor = MaterialTheme.colorScheme.primary,
+                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     )
                 }
@@ -197,8 +205,14 @@ fun MorakebApp(viewModel: MainViewModel) {
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->
-        Box(modifier = Modifier.padding(innerPadding)) {
-            if (selectedTab == 0) {
+        androidx.compose.animation.AnimatedContent(
+            targetState = selectedTab,
+            modifier = Modifier.padding(innerPadding).fillMaxSize(),
+            transitionSpec = {
+                androidx.compose.animation.fadeIn() togetherWith androidx.compose.animation.fadeOut()
+            }
+        ) { targetTab ->
+            if (targetTab == 0) {
                 ReadingScreen(viewModel)
             } else {
                 ReportsScreen(viewModel)
@@ -220,7 +234,7 @@ fun ReadingScreen(viewModel: MainViewModel) {
     
     // true = Active Reading Mode (words hidden, quick actions)
     // false = Analysis Mode (words shown, bottom sheet on long press)
-    var isRevisionMode by remember { mutableStateOf(true) }
+    var isRevisionMode by remember { mutableStateOf(false) }
     var revealedWordsCount by remember { mutableIntStateOf(0) }
     
 
@@ -263,33 +277,58 @@ fun ReadingScreen(viewModel: MainViewModel) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background.copy(alpha = 0.9f),
+                    titleContentColor = MaterialTheme.colorScheme.primary,
+                ),
                 title = {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth().padding(end = 8.dp),
+                        horizontalArrangement = Arrangement.Start,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         SurahDropdown(
                             selectedSurahId = selectedSurahId,
                             onSurahSelected = { viewModel.selectSurah(it) }
                         )
+                        Spacer(modifier = Modifier.width(8.dp))
                         if (currentAyah != null) {
-                            TextButton(onClick = { showJumpDialog = true }) {
+                            TextButton(
+                                onClick = { showJumpDialog = true },
+                                modifier = Modifier.clip(RoundedCornerShape(12.dp)),
+                                colors = ButtonDefaults.textButtonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                            ) {
                                 Text(
                                     text = "آية ${currentAyah.numberInSurah}",
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontSize = 16.sp,
+                                    fontFamily = com.example.ui.theme.UI_Font,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
                     }
                 },
                 actions = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(if (isRevisionMode) "تلاوة" else "تحليل", modifier = Modifier.padding(end = 8.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .padding(end = 16.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = if (isRevisionMode) "تلاوة" else "تحليل", 
+                            fontFamily = com.example.ui.theme.UI_Font,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 14.sp,
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
                         Switch(
                             checked = isRevisionMode,
-                            onCheckedChange = { isRevisionMode = it }
+                            onCheckedChange = { isRevisionMode = it },
+                            modifier = Modifier.scale(0.8f)
                         )
                     }
                 }
@@ -322,28 +361,61 @@ fun ReadingScreen(viewModel: MainViewModel) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 24.dp, vertical = 16.dp),
+                        .padding(horizontal = 24.dp, vertical = 24.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(
+                    Card(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
+                            .fillMaxWidth()
+                            .wrapContentHeight()
                             .padding(bottom = 80.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
                     ) {
-                        AyahDisplayView(
-                            ayah = ayah,
-                            isRevisionMode = isRevisionMode,
-                            revealedWordsCount = revealedWordsCount,
-                            onRevealWord = { newCount -> revealedWordsCount = newCount },
-                            errorLogs = errorLogs,
-                            quranFont = quranFont,
-                            viewModel = viewModel,
-                            onWordLongClick = { w -> selectedWordForAnalysis = Pair(ayah, w) }
-                        )
-                        
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState())
+                                .padding(horizontal = 24.dp, vertical = 40.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            // Page/Ayah decoration (e.g. Bismillah if Ayah 1)
+                            if (ayah.numberInSurah == 1 && ayah.surahId != 1 && ayah.surahId != 9) {
+                                Text("بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ", fontFamily = quranFont, fontSize = 28.sp, color = MaterialTheme.colorScheme.primary, textAlign = TextAlign.Center)
+                                Spacer(modifier = Modifier.height(24.dp))
+                            }
+                            
+                            AyahDisplayView(
+                                ayah = ayah,
+                                isRevisionMode = isRevisionMode,
+                                revealedWordsCount = revealedWordsCount,
+                                onRevealWord = { newCount -> revealedWordsCount = newCount },
+                                errorLogs = errorLogs,
+                                quranFont = quranFont,
+                                viewModel = viewModel,
+                                onWordLongClick = { w -> selectedWordForAnalysis = Pair(ayah, w) }
+                            )
+                            
+                            Spacer(modifier = Modifier.height(32.dp))
+                            
+                            // End of Ayah marker
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "﴿${ayah.numberInSurah}﴾", 
+                                    fontFamily = com.example.ui.theme.UI_Font, 
+                                    fontSize = 18.sp, 
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -561,9 +633,18 @@ fun ReportsScreen(viewModel: MainViewModel) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(16.dp)
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+                            // Colored side-bar based on error type
+                            Box(
+                                modifier = Modifier
+                                    .width(6.dp)
+                                    .fillMaxHeight()
+                                    .background(getErrorColor(log.errorType, MaterialTheme.colorScheme.primary))
+                            )
+                            Column(modifier = Modifier.padding(16.dp).weight(1f)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -598,6 +679,7 @@ fun ReportsScreen(viewModel: MainViewModel) {
                                 Text(text = "تمت قراءتها: ${log.readText}", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
                             }
                         }
+                        }
                     }
                 }
             }
@@ -615,7 +697,8 @@ fun SurahDropdown(selectedSurahId: Int, onSurahSelected: (Int) -> Unit) {
     TextButton(onClick = { showSheet = true }, modifier = Modifier.clip(RoundedCornerShape(8.dp))) {
         Text(
             text = selectedSurah?.name ?: "السورة",
-            fontSize = 20.sp,
+            fontSize = 22.sp,
+            fontFamily = com.example.ui.theme.UI_Font,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary
         )
